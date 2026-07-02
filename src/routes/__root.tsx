@@ -77,14 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "computer" },
+      { name: "description", content: "An AI agent sandbox for headless code and command execution." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "computer" },
+      { property: "og:description", content: "An AI agent sandbox for headless code and command execution." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "computer" },
+      { name: "twitter:description", content: "An AI agent sandbox for headless code and command execution." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/d0dec4c3-2084-40ed-be77-b882400568cf/id-preview-ddd4f914--a80e642f-0161-49ab-8f10-91d9f1b5c0f0.lovable.app-1782998145487.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/d0dec4c3-2084-40ed-be77-b882400568cf/id-preview-ddd4f914--a80e642f-0161-49ab-8f10-91d9f1b5c0f0.lovable.app-1782998145487.png" },
     ],
     links: [
       {

@@ -1,4 +1,5 @@
 import { Sandbox } from "e2b";
+import { randomUUID } from "crypto";
 
 export const DEFAULT_WORKDIR = "/home/user/workspace";
 const SANDBOX_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
@@ -9,6 +10,35 @@ export interface SandboxRecord {
   createdAt: number;
   lastUsedAt: number;
   recreateCount: number;
+  bgProcesses: Map<string, BackgroundProcess>;
+  ptys: Map<string, PtySession>;
+  tunnels: Set<number>;
+  envOverrides: Record<string, string>;
+}
+
+export interface BackgroundProcess {
+  id: string;
+  pid: number;
+  command: string;
+  cwd: string;
+  startedAt: number;
+  finishedAt?: number;
+  exitCode?: number;
+  status: "running" | "completed" | "failed";
+  stdout: string;
+  stderr: string;
+  handle: any;
+  detectedPort?: number;
+}
+
+export interface PtySession {
+  id: string;
+  pid: number;
+  startedAt: number;
+  buffer: string;
+  handle: any;
+  cols: number;
+  rows: number;
 }
 
 const registry = new Map<string, SandboxRecord>();
@@ -57,6 +87,10 @@ export async function getOrCreate(projectId: string): Promise<GetOrCreateResult>
       createdAt: Date.now(),
       lastUsedAt: Date.now(),
       recreateCount: 0,
+      bgProcesses: new Map(),
+      ptys: new Map(),
+      tunnels: new Set(),
+      envOverrides: {},
     };
     registry.set(projectId, rec);
     return { record: rec, isNew: true, reconnected: false };
@@ -73,6 +107,10 @@ export async function getOrCreate(projectId: string): Promise<GetOrCreateResult>
   existing.createdAt = Date.now();
   existing.lastUsedAt = Date.now();
   existing.recreateCount += 1;
+  existing.bgProcesses.clear();
+  existing.ptys.clear();
+  existing.tunnels.clear();
+  existing.envOverrides = {};
   return { record: existing, isNew: false, reconnected: true };
 }
 
@@ -100,3 +138,7 @@ export function absPath(rel: string): string {
 }
 
 export { probeAlive };
+
+export function newId(): string {
+  return randomUUID();
+}

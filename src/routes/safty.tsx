@@ -83,7 +83,7 @@ function toUrl(input: string): string {
   if (/^https?:\/\//i.test(value)) return value;
   const looksLikeDomain = /^[\w-]+(\.[\w-]+)+(\/|$|\?|#)/.test(value) && !value.includes(" ");
   if (looksLikeDomain) return `https://${value}`;
-  return `https://duckduckgo.com/?q=${encodeURIComponent(value)}&kp=1`;
+  return `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(value)}`;
 }
 
 const proxied = (url: string) => `/api/public/proxy?url=${encodeURIComponent(url)}`;

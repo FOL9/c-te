@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  Ban,
   Globe,
   Home,
   Lock,
@@ -10,12 +11,14 @@ import {
   RotateCw,
   Search,
   ShieldAlert,
+  Trash2,
   X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/safty")({
   head: () => ({
@@ -53,6 +56,15 @@ type Tab = {
 };
 
 type PendingApproval = { tabId: string; url: string; from: string | null };
+
+type BannedDomain = {
+  id: string;
+  domain: string;
+  reason: string | null;
+  blocked_url: string | null;
+  blocked_count: number;
+  last_attempt_at: string | null;
+};
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -101,11 +113,67 @@ function SafeBrowser() {
   const [approvedDomains, setApprovedDomains] = useState<string[]>([]);
   const [pending, setPending] = useState<PendingApproval | null>(null);
   const [blockedPopups, setBlockedPopups] = useState(0);
+  const [banned, setBanned] = useState<BannedDomain[]>([]);
+  const [showBanList, setShowBanList] = useState(false);
   const frames = useRef<Record<string, HTMLIFrameElement | null>>({});
 
   useEffect(() => {
     if (!activeId && tabs[0]) setActiveId(tabs[0].id);
   }, [activeId, tabs]);
+
+  const loadBanned = useCallback(async () => {
+    const { data } = await supabase
+      .from("banned_domains")
+      .select("id, domain, reason, blocked_url, blocked_count, last_attempt_at")
+      .order("domain");
+    if (data) setBanned(data as BannedDomain[]);
+  }, []);
+
+  useEffect(() => {
+    void loadBanned();
+  }, [loadBanned]);
+
+  const bannedSet = useMemo(() => new Set(banned.map((b) => b.domain)), [banned]);
+
+  const registerBlockedAttempt = useCallback(async (domain: string, url: string) => {
+    const row = banned.find((b) => b.domain === domain);
+    if (!row) return;
+    await supabase
+      .from("banned_domains")
+      .update({
+        blocked_count: row.blocked_count + 1,
+        last_attempt_at: new Date().toISOString(),
+        blocked_url: url,
+      })
+      .eq("id", row.id);
+    void loadBanned();
+  }, [banned, loadBanned]);
+
+  const banDomain = useCallback(
+    async (domain: string, url: string, reason: string | null) => {
+      await supabase.from("banned_domains").upsert(
+        {
+          domain,
+          reason: reason || null,
+          blocked_url: url,
+          blocked_count: 1,
+          last_attempt_at: new Date().toISOString(),
+        },
+        { onConflict: "domain" },
+      );
+      setApprovedDomains((prev) => prev.filter((d) => d !== domain));
+      await loadBanned();
+    },
+    [loadBanned],
+  );
+
+  const unbanDomain = useCallback(
+    async (id: string) => {
+      await supabase.from("banned_domains").delete().eq("id", id);
+      await loadBanned();
+    },
+    [loadBanned],
+  );
 
   const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
 
@@ -140,6 +208,11 @@ function SafeBrowser() {
       const url = toUrl(rawUrl);
       if (!url) return;
       const domain = hostOf(url);
+      if (bannedSet.has(domain)) {
+        patchTab(tabId, { status: "blocked", note: `${domain} is banned` });
+        void registerBlockedAttempt(domain, url);
+        return;
+      }
       const sameOrigin = from !== null && hostOf(from) === domain;
       if (sameOrigin || approvedDomains.includes(domain)) {
         commitNavigation(tabId, url);
@@ -147,7 +220,7 @@ function SafeBrowser() {
       }
       setPending({ tabId, url, from });
     },
-    [approvedDomains, commitNavigation],
+    [approvedDomains, commitNavigation, bannedSet, registerBlockedAttempt, patchTab],
   );
 
   useEffect(() => {

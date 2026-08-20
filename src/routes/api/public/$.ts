@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { handleProxy } from "@/lib/web-proxy.server";
 
 /**
  * Fallback for assets that a proxied page requests relative to the proxy path
@@ -27,7 +26,15 @@ export const Route = createFileRoute("/api/public/$")({
         } catch {
           return new Response("Not found", { status: 404 });
         }
-        return handleProxy(request, resolved);
+        // Redirect to the canonical proxy URL so nested assets requested by this
+        // file still carry a referer that identifies their origin.
+        return new Response(null, {
+          status: 302,
+          headers: {
+            location: `/api/public/proxy?url=${encodeURIComponent(resolved)}`,
+            "cache-control": "no-store",
+          },
+        });
       },
     },
   },

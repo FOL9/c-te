@@ -20,7 +20,8 @@ function isBlocked(target: URL) {
 }
 
 const PROXY_PATH = "/api/public/proxy";
-const px = (absUrl: string) => `${PROXY_PATH}?url=${encodeURIComponent(absUrl)}`;
+let APP_ORIGIN = "";
+const px = (absUrl: string) => `${APP_ORIGIN}${PROXY_PATH}?url=${encodeURIComponent(absUrl)}`;
 
 function abs(href: string, baseUrl: string): string | null {
   try {
@@ -98,7 +99,7 @@ function rewriteCss(css: string, baseUrl: string) {
 const INJECTED = `
 <script>
 (function () {
-  var PROXY = ${JSON.stringify(PROXY_PATH)};
+  var PROXY = location.origin + ${JSON.stringify(PROXY_PATH)};
   var BASE = document.baseURI;
   function toProxy(u) {
     try {
@@ -183,7 +184,9 @@ export const Route = createFileRoute("/api/public/proxy")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const raw = new URL(request.url).searchParams.get("url");
+        const reqUrl = new URL(request.url);
+        APP_ORIGIN = reqUrl.origin;
+        const raw = reqUrl.searchParams.get("url");
         if (!raw) return new Response("Missing url", { status: 400 });
 
         let target: URL;

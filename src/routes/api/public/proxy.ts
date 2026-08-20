@@ -19,9 +19,135 @@ function isBlocked(target: URL) {
   return false;
 }
 
+const PROXY_PATH = "/api/public/proxy";
+const px = (absUrl: string) => `${PROXY_PATH}?url=${encodeURIComponent(absUrl)}`;
+
+function abs(href: string, baseUrl: string): string | null {
+  try {
+    const u = new URL(href, baseUrl);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
+function rewriteSrcset(value: string, baseUrl: string) {
+  return value
+    .split(",")
+    .map((part) => {
+      const seg = part.trim();
+      if (!seg) return seg;
+      const [url, ...rest] = seg.split(/\s+/);
+      const a = abs(url, baseUrl);
+      return [a ? px(a) : url, ...rest].join(" ");
+    })
+    .join(", ");
+}
+
+const URL_ATTRS = ["src", "href", "poster", "data-src", "data-lazy-src", "data-original"];
+
+function rewriteHtml(html: string, baseUrl: string) {
+  // attribute URLs
+  const attrRe = new RegExp(
+    `\\s(${URL_ATTRS.join("|")})\\s*=\\s*("([^"]*)"|'([^']*)')`,
+    "gi",
+  );
+  html = html.replace(attrRe, (match, attr: string, _q: string, dq?: string, sq?: string) => {
+    const raw = (dq ?? sq ?? "").trim();
+    if (!raw || /^(data:|javascript:|mailto:|about:|blob:|#)/i.test(raw)) return match;
+    const a = abs(raw, baseUrl);
+    if (!a) return match;
+    return ` ${attr}="${px(a).replace(/"/g, "&quot;")}"`;
+  });
+
+  // srcset / data-srcset
+  html = html.replace(
+    /\s(srcset|data-srcset)\s*=\s*("([^"]*)"|'([^']*)')/gi,
+    (match, attr: string, _q: string, dq?: string, sq?: string) => {
+      const raw = dq ?? sq ?? "";
+      if (!raw.trim()) return match;
+      return ` ${attr}="${rewriteSrcset(raw, baseUrl).replace(/"/g, "&quot;")}"`;
+    },
+  );
+
+  // inline <style> blocks
+  html = html.replace(
+    /<style([^>]*)>([\s\S]*?)<\/style>/gi,
+    (_m, attrs: string, css: string) => `<style${attrs}>${rewriteCss(css, baseUrl)}</style>`,
+  );
+
+  return html;
+}
+
+function rewriteCss(css: string, baseUrl: string) {
+  css = css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (match, quote: string, raw: string) => {
+    const value = raw.trim();
+    if (!value || /^(data:|blob:|#)/i.test(value)) return match;
+    const a = abs(value, baseUrl);
+    if (!a) return match;
+    return `url(${quote}${px(a)}${quote})`;
+  });
+  css = css.replace(/@import\s+(['"])([^'"]+)\1/gi, (match, quote: string, raw: string) => {
+    const a = abs(raw, baseUrl);
+    return a ? `@import ${quote}${px(a)}${quote}` : match;
+  });
+  return css;
+}
+
 const INJECTED = `
 <script>
 (function () {
+  var PROXY = ${JSON.stringify(PROXY_PATH)};
+  var BASE = document.baseURI;
+  function toProxy(u) {
+    try {
+      if (typeof u !== "string") return u;
+      if (!u || u.indexOf(PROXY) === 0) return u;
+      if (/^(data:|blob:|javascript:|about:|#)/i.test(u)) return u;
+      var a = new URL(u, BASE);
+      if (a.protocol !== "http:" && a.protocol !== "https:") return u;
+      if (a.origin === location.origin) return u;
+      return PROXY + "?url=" + encodeURIComponent(a.href);
+    } catch (e) { return u; }
+  }
+  var _fetch = window.fetch;
+  if (_fetch) {
+    window.fetch = function (input, init) {
+      try {
+        if (typeof input === "string") input = toProxy(input);
+        else if (input && input.url) input = new Request(toProxy(input.url), input);
+      } catch (e) {}
+      return _fetch.call(this, input, init);
+    };
+  }
+  var _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    var args = Array.prototype.slice.call(arguments);
+    args[1] = toProxy(url);
+    return _open.apply(this, args);
+  };
+  // Rewrite src/href set dynamically by scripts
+  try {
+    var obs = new MutationObserver(function (muts) {
+      muts.forEach(function (m) {
+        var nodes = m.type === "attributes" ? [m.target] : Array.prototype.slice.call(m.addedNodes);
+        nodes.forEach(function (n) {
+          if (!n || n.nodeType !== 1) return;
+          var els = [n].concat(Array.prototype.slice.call(n.querySelectorAll ? n.querySelectorAll("[src],[poster]") : []));
+          els.forEach(function (el) {
+            ["src", "poster"].forEach(function (attr) {
+              var v = el.getAttribute && el.getAttribute(attr);
+              if (!v) return;
+              var p = toProxy(v);
+              if (p !== v) el.setAttribute(attr, p);
+            });
+          });
+        });
+      });
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["src", "poster"] });
+  } catch (e) {}
   function send(type, payload) {
     try { parent.postMessage(Object.assign({ __safeBrowser: true, type: type }, payload), "*"); } catch (e) {}
   }

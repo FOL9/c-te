@@ -13,6 +13,7 @@ import { Route as SaftyRouteImport } from './routes/safty'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiMcpRouteImport } from './routes/api/mcp'
 import { Route as ApiPublicProxyRouteImport } from './routes/api/public/proxy'
+import { Route as ApiPublicSplatRouteImport } from './routes/api/public/$'
 
 const SaftyRoute = SaftyRouteImport.update({
   id: '/safty',
@@ -34,17 +35,24 @@ const ApiPublicProxyRoute = ApiPublicProxyRouteImport.update({
   path: '/api/public/proxy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicSplatRoute = ApiPublicSplatRouteImport.update({
+  id: '/api/public/$',
+  path: '/api/public/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/safty': typeof SaftyRoute
   '/api/mcp': typeof ApiMcpRoute
+  '/api/public/$': typeof ApiPublicSplatRoute
   '/api/public/proxy': typeof ApiPublicProxyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/safty': typeof SaftyRoute
   '/api/mcp': typeof ApiMcpRoute
+  '/api/public/$': typeof ApiPublicSplatRoute
   '/api/public/proxy': typeof ApiPublicProxyRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,28 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/safty': typeof SaftyRoute
   '/api/mcp': typeof ApiMcpRoute
+  '/api/public/$': typeof ApiPublicSplatRoute
   '/api/public/proxy': typeof ApiPublicProxyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/safty' | '/api/mcp' | '/api/public/proxy'
+  fullPaths: '/' | '/safty' | '/api/mcp' | '/api/public/$' | '/api/public/proxy'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/safty' | '/api/mcp' | '/api/public/proxy'
-  id: '__root__' | '/' | '/safty' | '/api/mcp' | '/api/public/proxy'
+  to: '/' | '/safty' | '/api/mcp' | '/api/public/$' | '/api/public/proxy'
+  id:
+    | '__root__'
+    | '/'
+    | '/safty'
+    | '/api/mcp'
+    | '/api/public/$'
+    | '/api/public/proxy'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SaftyRoute: typeof SaftyRoute
   ApiMcpRoute: typeof ApiMcpRoute
+  ApiPublicSplatRoute: typeof ApiPublicSplatRoute
   ApiPublicProxyRoute: typeof ApiPublicProxyRoute
 }
 
@@ -99,6 +115,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicProxyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/$': {
+      id: '/api/public/$'
+      path: '/api/public/$'
+      fullPath: '/api/public/$'
+      preLoaderRoute: typeof ApiPublicSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -106,8 +129,19 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SaftyRoute: SaftyRoute,
   ApiMcpRoute: ApiMcpRoute,
+  ApiPublicSplatRoute: ApiPublicSplatRoute,
   ApiPublicProxyRoute: ApiPublicProxyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

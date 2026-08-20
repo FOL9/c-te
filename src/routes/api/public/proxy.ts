@@ -194,17 +194,22 @@ export const Route = createFileRoute("/api/public/proxy")({
         }
         if (isBlocked(target)) return new Response("Blocked host", { status: 403 });
 
+        const reqHeaders: Record<string, string> = {
+          "user-agent":
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+          accept: request.headers.get("accept") ?? "*/*",
+          "accept-language": "en-US,en;q=0.9",
+          referer: target.origin + "/",
+          origin: target.origin,
+        };
+        const range = request.headers.get("range");
+        if (range) reqHeaders["range"] = range;
+
         let upstream: Response;
         try {
           upstream = await fetch(target.href, {
             redirect: "follow",
-            headers: {
-              "user-agent":
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
-              accept:
-                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-              "accept-language": "en-US,en;q=0.9",
-            },
+            headers: reqHeaders,
           });
         } catch {
           return new Response("Upstream fetch failed", { status: 502 });
@@ -215,14 +220,31 @@ export const Route = createFileRoute("/api/public/proxy")({
         headers.set("content-type", contentType);
         headers.set("cache-control", "no-store");
         headers.set("x-proxy-final-url", upstream.url || target.href);
-        headers.set("access-control-expose-headers", "x-proxy-final-url");
+        headers.set("access-control-allow-origin", "*");
+        headers.set(
+          "access-control-expose-headers",
+          "x-proxy-final-url, content-length, content-range, accept-ranges",
+        );
+        for (const h of ["content-range", "accept-ranges", "content-length", "content-disposition"]) {
+          const v = upstream.headers.get(h);
+          if (v) headers.set(h, v);
+        }
+
+        const finalUrl = upstream.url || target.href;
+
+        if (contentType.includes("text/css")) {
+          const css = await upstream.text();
+          headers.delete("content-length");
+          return new Response(rewriteCss(css, finalUrl), { status: upstream.status, headers });
+        }
 
         if (!contentType.includes("text/html")) {
           return new Response(upstream.body, { status: upstream.status, headers });
         }
 
         let html = await upstream.text();
-        const finalUrl = upstream.url || target.href;
+        headers.delete("content-length");
+        html = rewriteHtml(html, finalUrl);
         const base = `<base href="${finalUrl.replace(/"/g, "&quot;")}">`;
         if (/<head[^>]*>/i.test(html)) {
           html = html.replace(/<head([^>]*)>/i, `<head$1>${base}`);

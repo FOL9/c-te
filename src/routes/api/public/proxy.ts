@@ -250,15 +250,14 @@ export const Route = createFileRoute("/api/public/proxy")({
         html = rewriteHtml(html, finalUrl);
         const base = `<base href="${finalUrl.replace(/"/g, "&quot;")}">`;
         if (/<head[^>]*>/i.test(html)) {
-          html = html.replace(/<head([^>]*)>/i, `<head$1>${base}`);
+          html = html.replace(/<head([^>]*)>/i, `<head$1>${base}${INJECTED}`);
         } else {
-          html = base + html;
+          html = base + INJECTED + html;
         }
         html = html.replace(
           /<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi,
           "",
         );
-        html += INJECTED;
 
         return new Response(html, { status: upstream.status, headers });
       },
